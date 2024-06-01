@@ -1,0 +1,75 @@
+# Example mcmc fitting for Clara
+
+Load important packages
+
+```{r}
+
+library(tidyverse)
+#install.packages("BayesianTools") # install if needed
+library(BayesianTools)
+
+# Help with plotting posteriors
+library(posterior)
+library(bayesplot)
+
+
+```
+
+Simulate the data. 
+
+```{r}
+
+# Imagine this is an exposure rate, which is at 1 for 20 days then switches to 0.5 for 20 days.
+sim_data <- c(rep(1, 20), rep(0.5, 20))
+
+# Add noise to estimates (like reporting error)
+sim_data_noise <- sim_data + rnorm(40, 0, 0.2)
+df_data <- data.frame(
+    day = 1:40,
+    exp = sim_data_noise
+)
+
+# Plot the exposure rate in time with noise:
+df_data %>%   
+    ggplot() + 
+        geom_point(aes(x = day, y = exp))
+
+```
+
+Imagine a situation where we know at day 21 the exposure changes (maybe due to lockdown?) but we don't know to what value. 
+We have the simulated data in df_data, but looking at the plot it's not obvious what the exposure changes to.
+We can recover our simulated value using a mcmc model!
+To do this we will use package called BayesianTools:
+
+```{r}
+
+# likleihood function. 
+likelihood1 <- function(param){
+    exp_scale <- param[1]
+    noise_sd <- param[2]
+    likelihoods_pre = dnorm(df_data$exp[1:20], mean = 1, sd = noise_sd, log = T)
+    likelihoods_post = dnorm(df_data$exp[21:40], mean = 1 * exp_scale, sd = noise_sd, log = T)
+
+    return(sum(likelihoods_pre, likelihoods_post))  
+}
+
+# This function creares the Bayesian model. Under the hood it's creating uniform priors between 0 and 1 for exp_scale and noise_sd.
+setUp1 <- createBayesianSetup(likelihood1, lower = c(0, 0), upper = c(1, 1))
+
+# Run for 10,000 steps.
+settings = list(iterations = 10000, message = FALSE)
+out1 <- runMCMC(bayesianSetup = setUp1, sampler = "Metropolis", settings = settings)
+
+```
+
+Plot the posterior samples
+
+```{r}
+
+posterior <- getSample(out1)
+
+summary(out1)
+plot(out1) # plot internally calls tracePlot(out)
+
+
+```
